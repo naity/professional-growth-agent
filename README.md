@@ -1,5 +1,11 @@
 # Meeting Coach Agent
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![uv](https://img.shields.io/badge/uv-package%20manager-orange.svg)](https://docs.astral.sh/uv/)
+[![Claude Agent SDK](https://img.shields.io/badge/Claude-Agent%20SDK-blueviolet.svg)](https://docs.anthropic.com/en/agent-sdk)
+[![AWS](https://img.shields.io/badge/AWS-Bedrock%20%26%20Transcribe-FF9900.svg)](https://aws.amazon.com/)
+
 AI-powered meeting analysis using Claude Agent SDK and AWS Transcribe. Get actionable feedback on your 1:1s and team meetings.
 
 ## Quick Start
