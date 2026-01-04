@@ -1,0 +1,323 @@
+#!/usr/bin/env python3
+"""
+Streamlit Web UI for Meeting Coach Agent
+Upload meetings, get analysis, and ask follow-up questions.
+"""
+
+import streamlit as st
+import asyncio
+import os
+from pathlib import Path
+from dotenv import load_dotenv
+from claude_agent_sdk import query, AssistantMessage, TextBlock
+from prompts import get_agent_options, get_initial_prompt
+from session_manager import SessionManager
+import tempfile
+
+# Load environment variables
+load_dotenv()
+
+# Initialize session manager
+session_manager = SessionManager()
+
+# Page config
+st.set_page_config(
+    page_title="Meeting Coach",
+    page_icon="🎯",
+    layout="wide"
+)
+
+# Initialize session state
+if 'messages' not in st.session_state:
+    st.session_state.messages = []
+if 'analysis_complete' not in st.session_state:
+    st.session_state.analysis_complete = False
+if 'audio_path' not in st.session_state:
+    st.session_state.audio_path = None
+if 'session_id' not in st.session_state:
+    st.session_state.session_id = None
+if 'current_audio_filename' not in st.session_state:
+    st.session_state.current_audio_filename = None
+if 'output_file' not in st.session_state:
+    st.session_state.output_file = None
+
+
+async def analyze_meeting(audio_path: str, user_role: str, analysis_type: str, original_filename: str):
+    """Analyze meeting and capture session ID for follow-up questions."""
+    
+    # Get consistent agent configuration
+    options = get_agent_options(mode="analysis")
+    options.cwd = str(Path(__file__).parent.absolute())
+    
+    # Build initial prompt using shared configuration
+    # Use original filename, not temp path
+    # Note: prompts.py automatically adds "results/" prefix
+    output_file = f"analysis_{Path(original_filename).stem}.md"
+    prompt = get_initial_prompt(audio_path, user_role, analysis_type, output_file, mode="analysis")
+    
+    # Run query and capture session ID
+    session_id = None
+    response_text = []
+    file_written = False
+    
+    async for message in query(prompt=prompt, options=options):
+        # Capture session ID from init message
+        if hasattr(message, 'subtype') and message.subtype == 'init':
+            session_id = message.data.get('session_id')
+        
+        # Check for file writes
+        if hasattr(message, 'type') and message.type == 'tool_use':
+            if hasattr(message, 'name') and message.name == 'Write':
+                file_written = True
+        
+        # Collect assistant responses
+        if isinstance(message, AssistantMessage):
+            for block in message.content:
+                if isinstance(block, TextBlock):
+                    response_text.append(block.text)
+    
+    result_text = "\n".join(response_text) if response_text else "Analysis completed and saved to file."
+    return session_id, result_text
+
+
+async def ask_followup(session_id: str, question: str):
+    """Ask a follow-up question using session resumption."""
+    try:
+        # Get agent options for chat mode
+        options = get_agent_options(mode="chat")
+        options.cwd = str(Path(__file__).parent.absolute())
+        options.resume = session_id  # Resume the session
+        
+        response_text = []
+        async for message in query(prompt=question, options=options):
+            if isinstance(message, AssistantMessage):
+                for block in message.content:
+                    if isinstance(block, TextBlock):
+                        response_text.append(block.text)
+        
+        result = "\n".join(response_text)
+        if not result:
+            return "I apologize, but I didn't generate a response. Could you rephrase your question?"
+        return result
+    except Exception as e:
+        return f"Error processing your question: {str(e)}"
+
+
+# UI Layout
+st.title("🎯 Meeting Coach Agent")
+st.markdown("AI-powered meeting analysis with Claude Agent SDK")
+
+# Sidebar for configuration and previous sessions
+with st.sidebar:
+    st.header("Settings")
+    
+    user_role = st.selectbox(
+        "Your Role",
+        ["participant", "report", "manager"],
+        help="Your role in the meeting"
+    )
+    
+    analysis_type = st.selectbox(
+        "Analysis Type",
+        ["comprehensive", "manager_1on1", "quick"],
+        help="Depth and focus of analysis"
+    )
+    
+    st.markdown("---")
+    st.header("📜 Previous Sessions")
+    
+    # Get all previous sessions
+    previous_sessions = session_manager.get_all_sessions()
+    
+    if previous_sessions:
+        session_options = ["-- Select a session --"] + [
+            session_manager.format_session_display(s) for s in previous_sessions
+        ]
+        
+        selected_idx = st.selectbox(
+            "Load Previous Analysis",
+            range(len(session_options)),
+            format_func=lambda i: session_options[i],
+            help="Resume a previous meeting analysis"
+        )
+        
+        if selected_idx > 0:  # Not the default option
+            selected_session = previous_sessions[selected_idx - 1]
+            
+            if st.button("📂 Load This Session", type="primary"):
+                # Load the session
+                st.session_state.session_id = selected_session['session_id']
+                st.session_state.current_audio_filename = selected_session['audio_filename']
+                st.session_state.output_file = selected_session['output_file']
+                st.session_state.analysis_complete = True
+                
+                # Load the analysis from file
+                output_path = Path(selected_session['output_file'])
+                if output_path.exists():
+                    with open(output_path, 'r') as f:
+                        analysis = f.read()
+                    
+                    st.session_state.messages = [{
+                        "role": "assistant",
+                        "content": analysis
+                    }]
+                    
+                    session_manager.update_last_accessed(selected_session['session_id'])
+                    st.success(f"✅ Loaded: {selected_session['audio_filename']}")
+                    st.rerun()
+                else:
+                    st.error("Analysis file not found")
+    else:
+        st.info("No previous sessions yet")
+    
+    st.markdown("---")
+    st.markdown("### About")
+    st.markdown("""
+    Upload your meeting recording to get:
+    - Actionable feedback
+    - Communication insights
+    - Areas for improvement
+    
+    Then ask follow-up questions!
+    """)
+
+# Main content area
+tab1, tab2 = st.tabs(["📁 Upload & Analyze", "💬 Chat"])
+
+with tab1:
+    st.header("Upload Meeting Recording")
+    
+    uploaded_file = st.file_uploader(
+        "Choose an audio file",
+        type=['mp3', 'wav', 'm4a', 'mp4', 'flac', 'ogg'],
+        help="Upload your meeting recording (MP3, WAV, M4A, etc.)"
+    )
+    
+    if uploaded_file is not None:
+        # Save uploaded file temporarily
+        with tempfile.NamedTemporaryFile(delete=False, suffix=Path(uploaded_file.name).suffix) as tmp_file:
+            tmp_file.write(uploaded_file.getvalue())
+            tmp_path = tmp_file.name
+            st.session_state.audio_path = tmp_path
+        
+        st.success(f"✅ Uploaded: {uploaded_file.name}")
+        
+        if st.button("🚀 Analyze Meeting", type="primary"):
+            with st.spinner("🤖 Analyzing meeting... This may take a few minutes."):
+                try:
+                    # Get list of files before analysis
+                    results_dir = Path("results")
+                    results_dir.mkdir(exist_ok=True)
+                    existing_files = set(results_dir.glob("*.md"))
+                    
+                    # Run analysis with original filename
+                    session_id, analysis = asyncio.run(
+                        analyze_meeting(tmp_path, user_role, analysis_type, uploaded_file.name)
+                    )
+                    
+                    # Find the newly created file
+                    new_files = set(results_dir.glob("*.md")) - existing_files
+                    
+                    if new_files:
+                        actual_output_file = str(list(new_files)[0])
+                    else:
+                        # Expected filename
+                        expected_file = f"results/analysis_{Path(uploaded_file.name).stem}.md"
+                        actual_output_file = expected_file
+                    
+                    # Store session ID and metadata
+                    st.session_state.session_id = session_id
+                    st.session_state.current_audio_filename = uploaded_file.name
+                    st.session_state.output_file = actual_output_file
+                    st.session_state.analysis_complete = True
+                    
+                    # Store the latest analysis in messages
+                    st.session_state.messages = [{
+                        "role": "assistant",
+                        "content": analysis
+                    }]
+                    
+                    # Save session metadata with actual file path
+                    session_manager.save_session(
+                        session_id=session_id,
+                        audio_filename=uploaded_file.name,
+                        user_role=user_role,
+                        analysis_type=analysis_type,
+                        output_file=actual_output_file
+                    )
+                    
+                    st.success("✅ Analysis complete! Switch to the Chat tab to ask follow-up questions.")
+                    st.rerun()
+                    
+                except Exception as e:
+                    st.error(f"❌ Error during analysis: {str(e)}")
+    
+    # Show analysis and download button if analysis exists (outside button block)
+    if st.session_state.analysis_complete and st.session_state.output_file:
+        # Show analysis
+        if st.session_state.messages:
+            latest_analysis = st.session_state.messages[0]["content"]
+            with st.expander("📊 View Analysis", expanded=True):
+                st.markdown(latest_analysis)
+        
+        # Show download button
+        output_path = Path(st.session_state.output_file)
+        if output_path.exists():
+            with open(output_path, "r") as f:
+                md_content = f.read()
+            
+            st.download_button(
+                label="📥 Download Analysis (Markdown)",
+                data=md_content,
+                file_name=output_path.name,
+                mime="text/markdown",
+                use_container_width=True,
+                key="download_analysis_tab1"
+            )
+
+with tab2:
+    st.header("Ask Follow-Up Questions")
+    
+    # Show current session info
+    if st.session_state.analysis_complete and st.session_state.current_audio_filename:
+        st.caption(f"💬 Chatting about: **{st.session_state.current_audio_filename}**")
+    
+    if not st.session_state.analysis_complete:
+        st.info("👈 Upload and analyze a meeting first, or load a previous session to start chatting!")
+    else:
+        # Display chat history
+        for message in st.session_state.messages:
+            with st.chat_message(message["role"]):
+                st.markdown(message["content"])
+        
+        # Chat input
+        if prompt := st.chat_input("Ask a follow-up question..."):
+            # Add user message
+            st.session_state.messages.append({"role": "user", "content": prompt})
+            with st.chat_message("user"):
+                st.markdown(prompt)
+            
+            # Get agent response
+            with st.chat_message("assistant"):
+                with st.spinner("Thinking..."):
+                    try:
+                        response = asyncio.run(
+                            ask_followup(st.session_state.session_id, prompt)
+                        )
+                        st.markdown(response)
+                        st.session_state.messages.append({
+                            "role": "assistant",
+                            "content": response
+                        })
+                    except Exception as e:
+                        error_msg = f"Error: {str(e)}"
+                        st.error(error_msg)
+                        st.session_state.messages.append({
+                            "role": "assistant",
+                            "content": error_msg
+                        })
+
+# Footer
+st.markdown("---")
+st.markdown("Built with [Claude Agent SDK](https://docs.anthropic.com/en/agent-sdk) and [Streamlit](https://streamlit.io)")
+

@@ -42,21 +42,44 @@ MEETING_TRANSCRIBE_S3_BUCKET=meeting-coach-transcriptions
 
 ## Usage
 
+### 1. Single Analysis (CLI)
+
 ```bash
 # Basic - analyzes from your perspective
 uv run python agent.py meeting.mp3
 
-# Specify your role
-uv run python agent.py meeting.mp3 --role report        # You're junior person
-uv run python agent.py meeting.mp3 --role manager       # You're senior person
+# Specify your role and analysis type
+uv run python agent.py meeting.mp3 --role report --type manager_1on1
 
-# Analysis types
-uv run python agent.py meeting.mp3 --type comprehensive # Full analysis (default)
-uv run python agent.py meeting.mp3 --type manager_1on1  # 1:1 focused
-uv run python agent.py meeting.mp3 --type quick         # Quick summary
-
-# Custom output
+# Custom output file
 uv run python agent.py meeting.mp3 --output analysis.md
+```
+
+### 2. Interactive Chat (CLI)
+
+Multi-turn conversation - ask follow-up questions about your meeting:
+
+```bash
+# Start interactive session
+uv run python chat_agent.py meeting.mp3 --role report
+
+# After analysis, ask questions like:
+# - "What specific questions should I have asked?"
+# - "Give me a script for my next 1:1"
+# - "How can I improve my active listening?"
+```
+
+### 3. Web UI (Streamlit)
+
+Visual interface with chat:
+
+```bash
+uv run streamlit run streamlit_app.py
+
+# Then open browser to http://localhost:8501
+# - Upload audio file
+# - Get analysis
+# - Ask follow-up questions in chat interface
 ```
 
 ## What It Analyzes
@@ -91,11 +114,22 @@ Typical 30-minute meeting: ~$1.50
 ├── .claude/skills/meeting-transcription/
 │   ├── SKILL.md                     # Skill definition
 │   └── transcribe_audio.py          # AWS Transcribe integration
-├── agent.py                         # Main agent
+├── agent.py                         # Single analysis (CLI)
+├── chat_agent.py                    # Interactive multi-turn chat (CLI)
+├── streamlit_app.py                 # Web UI with chat interface
+├── prompts.py                       # Shared prompt configuration
 ├── pyproject.toml                   # Dependencies (uv)
 ├── env.template                     # Environment template
 └── README.md
 ```
+
+### Architecture
+
+**Consistent Prompt Management:**
+- `prompts.py` - Centralized configuration with custom system prompt
+- Custom system prompt with Meeting Coach instructions
+- Mode-specific additions for analysis/chat/stream
+- All three interfaces use identical configuration
 
 ## IAM Permissions
 
