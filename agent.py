@@ -25,27 +25,30 @@ def build_analysis_prompt(
     audio_path: str, 
     analysis_type: str = "comprehensive",
     user_role: str = "participant",
-    output_file: str = "analysis.md"
+    output_file: str = "analysis.md",
+    scenario: str = "meeting"
 ) -> str:
     """Wrapper for shared prompt builder - kept for backward compatibility."""
-    return get_initial_prompt(audio_path, user_role, analysis_type, output_file, mode="analysis")
+    return get_initial_prompt(audio_path, user_role, analysis_type, output_file, mode="analysis", scenario=scenario)
 
 
 async def run_meeting_analysis(
     audio_path: str,
-    analysis_type: str = "comprehensive",
-    user_role: str = "participant",
+    analysis_type: str = "manager_1on1",
+    user_role: str = "report",
     output_file: str = None,
+    scenario: str = "meeting",
     verbose: bool = True
 ):
     """
-    Run the meeting analysis agent.
+    Run the meeting/interview analysis agent.
     
     Args:
-        audio_path: Path to the meeting audio file
+        audio_path: Path to the audio file
         analysis_type: Type of analysis to perform
-        user_role: User's role in the meeting (participant, report, manager)
+        user_role: User's role in the conversation
         output_file: Path to save the analysis (default: auto-generated markdown file)
+        scenario: Type of conversation (meeting or interview)
         verbose: Whether to print progress messages
     """
     
@@ -74,7 +77,7 @@ async def run_meeting_analysis(
     options.cwd = str(Path(__file__).parent.absolute())
     
     # Generate the analysis prompt
-    prompt = build_analysis_prompt(audio_path, analysis_type, user_role, output_file)
+    prompt = build_analysis_prompt(audio_path, analysis_type, user_role, output_file, scenario)
     
     if verbose:
         print("\n🤖 Agent is working...\n")
@@ -168,10 +171,23 @@ Environment Variables (loaded from .env):
     )
     
     parser.add_argument(
+        '-s', '--scenario',
+        choices=['meeting', 'interview'],
+        default='meeting',
+        help='Type of conversation: meeting or interview'
+    )
+    
+    parser.add_argument(
         '-r', '--role',
-        choices=['participant', 'report', 'manager'],
-        default='participant',
-        help='Your role: participant (neutral), report (junior person), manager (senior person)'
+        default='report',
+        help='Your role: meeting (participant/report/manager), interview (candidate/interviewer)'
+    )
+    
+    parser.add_argument(
+        '-t', '--type',
+        choices=['comprehensive', 'quick', 'manager_1on1'],
+        default='manager_1on1',
+        help='Type of analysis to perform (default: manager_1on1 for meetings)'
     )
     
     parser.add_argument(
@@ -193,6 +209,7 @@ Environment Variables (loaded from .env):
         analysis_type=args.type,
         user_role=args.role,
         output_file=args.output,
+        scenario=args.scenario,
         verbose=not args.quiet
     ))
 

@@ -36,11 +36,12 @@ def _get_system_prompt(mode):
 
 ## Your Role
 
-Help users improve their communication and get more value from meetings by:
-- Analyzing meeting transcripts objectively
+Help users improve their communication and get more value from conversations (meetings, interviews) by:
+- Analyzing conversation transcripts objectively
 - Focusing on what the user can control and improve
 - Providing specific, actionable feedback
 - Being conversational and supportive
+- Adapting feedback to the context (meetings, interviews, etc.)
 
 ## Analysis Principles
 
@@ -50,9 +51,9 @@ Help users improve their communication and get more value from meetings by:
    - Provide actionable suggestions for improvement
 
 2. **Neutral Speaker References**
-   - Refer to speakers neutrally (Speaker A, Speaker B, spk_0, spk_1)
-   - Don't make assumptions about roles or relationships
-   - Let the user tell you their role if needed
+   - Refer to speakers neutrally (Speaker A, Speaker B, spk_0, spk_1, or Interviewer/Candidate if context is clear)
+   - Don't make assumptions about roles or relationships unless specified
+   - Adapt feedback based on the conversation type (meeting vs interview)
 
 3. **Specificity**
    - Use concrete examples from the transcript
@@ -110,47 +111,56 @@ You are in a web chat interface. Be:
     return ""  # Default: no additional prompt
 
 
-def get_initial_prompt(audio_path, user_role, analysis_type, output_file=None, mode="analysis"):
+def get_initial_prompt(audio_path, user_role, analysis_type, output_file=None, mode="analysis", scenario="meeting"):
     """
     Generate the initial analysis prompt.
     
     Args:
         audio_path: Path to audio file
-        user_role: User's role (participant, report, manager)
+        user_role: User's role (participant/report/manager for meetings, candidate/interviewer for interviews)
         analysis_type: Type of analysis (comprehensive, quick, manager_1on1)
         output_file: Output file path (for analysis mode)
         mode: Interaction mode
+        scenario: Context type (meeting or interview)
     
     Returns:
         Formatted prompt string
     """
     
-    # Build perspective based on role
+    # Build perspective based on scenario and role
     perspective = ""
-    if user_role == "report":
-        perspective = "I am the more junior person in this meeting (direct report or skip-level). "
-    elif user_role == "manager":
-        perspective = "I am the more senior person in this meeting. "
+    if scenario == "meeting":
+        if user_role == "report":
+            perspective = "I am the more junior person in this meeting (direct report or skip-level). "
+        elif user_role == "manager":
+            perspective = "I am the more senior person in this meeting. "
+    elif scenario == "interview":
+        if user_role == "candidate":
+            perspective = "I am the candidate being interviewed. "
+        elif user_role == "interviewer":
+            perspective = "I am the interviewer conducting the interview. "
     
     # Build base prompt
+    conversation_type = "interview" if scenario == "interview" else "meeting"
+    
     if mode == "analysis":
         # Ensure output goes to results/ folder
         if output_file and not output_file.startswith("results/"):
             output_file = f"results/{output_file}"
         
         prompt = f"""
-I have a meeting recording at: {audio_path}
+I have a {conversation_type} recording at: {audio_path}
 
-{perspective}Transcribe this meeting and write your analysis directly to: {output_file}
+{perspective}Transcribe this {conversation_type} and write your analysis directly to: {output_file}
 
 Analysis type: {analysis_type}
-Focus on actionable feedback to help ME improve my communication.
+Focus on actionable feedback to help ME improve my {"interview performance" if scenario == "interview" else "communication"}.
 """
     else:  # chat or stream
         prompt = f"""
-I have a meeting recording at: {audio_path}
+I have a {conversation_type} recording at: {audio_path}
 
-{perspective}Transcribe this meeting and provide {analysis_type} analysis.
+{perspective}Transcribe this {conversation_type} and provide {analysis_type} analysis.
 
 Focus on actionable feedback to help ME improve.
 After the initial analysis, I may ask follow-up questions.
@@ -167,6 +177,36 @@ Focus on:
 - Career development discussion
 - Clarity of my action items
 - What I can do better next time
+
+Keep the analysis comprehensive but tight - aim for depth without redundancy.
+"""
+    elif scenario == "interview":
+        # Interview-specific guidance
+        if user_role == "candidate":
+            prompt += """
+
+Focus on candidate performance:
+- Answer structure and clarity (STAR method if relevant)
+- Technical depth and accuracy (for technical questions)
+- Communication skills and articulation
+- Questions I asked about the role/company
+- Confidence and engagement level
+- Areas where I struggled or could improve
+- Specific suggestions for better answers
+
+Keep the analysis comprehensive but tight - aim for depth without redundancy.
+"""
+        elif user_role == "interviewer":
+            prompt += """
+
+Focus on interviewer effectiveness:
+- Question quality and relevance
+- Follow-up and probing techniques
+- Candidate engagement and rapport building
+- Potential bias indicators in questions or tone
+- Time management and coverage
+- Clear communication of role/expectations
+- Areas for improvement in interview technique
 
 Keep the analysis comprehensive but tight - aim for depth without redundancy.
 """

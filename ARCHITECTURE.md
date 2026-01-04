@@ -16,10 +16,10 @@ Meeting Coach Agent uses a centralized prompt management approach inspired by Cl
 │ - get_initial_prompt(...)                   │
 └─────────────────────────────────────────────┘
                     ↓
-┌────────────┬─────────────┬──────────────────┐
-│ agent.py   │ chat_agent  │ streamlit_app.py │
-│ (analysis) │ (chat)      │ (stream)         │
-└────────────┴─────────────┴──────────────────┘
+        ┌───────────────┬──────────────────┐
+        │ agent.py      │ streamlit_app.py │
+        │ (CLI)         │ (Web UI + Chat)  │
+        └───────────────┴──────────────────┘
 ```
 
 ## Components
@@ -63,7 +63,7 @@ get_initial_prompt(audio_path, user_role, analysis_type, output_file, mode)
 
 ### 2. Interface Files
 
-All three interfaces import and use the shared configuration:
+Both interfaces import and use the shared configuration:
 
 ```python
 from prompts import get_agent_options, get_initial_prompt
@@ -85,22 +85,13 @@ prompt = get_initial_prompt(audio_path, user_role, analysis_type, ...)
 
 ## Extending the System
 
-### Adding a New Interface
+### Architecture Benefits
 
-```python
-# new_interface.py
-from prompts import get_agent_options, get_initial_prompt
-
-# Get configured options
-options = get_agent_options(mode="my_mode")  # Add to prompts.py
-
-# Get prompt
-prompt = get_initial_prompt(..., mode="my_mode")
-
-# Use with agent
-async for message in query(prompt=prompt, options=options):
-    ...
-```
+| Benefit | Description |
+|---------|-------------|
+| **Simplicity** | Two clear interfaces: CLI for quick analysis, Web for interaction |
+| **No Redundancy** | Each interface serves a distinct purpose |
+| **Easy Maintenance** | Shared prompts ensure consistency |
 
 ### Modifying Core Behavior
 

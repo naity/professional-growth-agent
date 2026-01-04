@@ -42,8 +42,8 @@ if 'output_file' not in st.session_state:
     st.session_state.output_file = None
 
 
-async def analyze_meeting(audio_path: str, user_role: str, analysis_type: str, original_filename: str):
-    """Analyze meeting and capture session ID for follow-up questions."""
+async def analyze_meeting(audio_path: str, user_role: str, analysis_type: str, original_filename: str, scenario: str = "meeting"):
+    """Analyze meeting/interview and capture session ID for follow-up questions."""
     
     # Get consistent agent configuration
     options = get_agent_options(mode="analysis")
@@ -53,7 +53,7 @@ async def analyze_meeting(audio_path: str, user_role: str, analysis_type: str, o
     # Use original filename, not temp path
     # Note: prompts.py automatically adds "results/" prefix
     output_file = f"analysis_{Path(original_filename).stem}.md"
-    prompt = get_initial_prompt(audio_path, user_role, analysis_type, output_file, mode="analysis")
+    prompt = get_initial_prompt(audio_path, user_role, analysis_type, output_file, mode="analysis", scenario=scenario)
     
     # Run query and capture session ID
     session_id = None
@@ -105,21 +105,47 @@ async def ask_followup(session_id: str, question: str):
 
 # UI Layout
 st.title("🎯 Meeting Coach Agent")
-st.markdown("AI-powered meeting analysis with Claude Agent SDK")
+st.markdown("AI-powered meeting and interview analysis with Claude Agent SDK")
 
 # Sidebar for configuration and previous sessions
 with st.sidebar:
     st.header("Settings")
     
+    scenario = st.selectbox(
+        "Scenario",
+        ["meeting", "interview"],
+        help="Type of conversation to analyze"
+    )
+    
+    # Role options change based on scenario
+    if scenario == "meeting":
+        role_options = ["report", "participant", "manager"]  # report first as default
+        role_help = "Your role in the meeting"
+        default_role_idx = 0  # report
+    else:  # interview
+        role_options = ["candidate", "interviewer"]
+        role_help = "Your role in the interview"
+        default_role_idx = 0  # candidate
+    
     user_role = st.selectbox(
         "Your Role",
-        ["participant", "report", "manager"],
-        help="Your role in the meeting"
+        role_options,
+        index=default_role_idx,
+        help=role_help
     )
+    
+    # Analysis types
+    if scenario == "meeting":
+        analysis_options = ["manager_1on1", "comprehensive", "quick"]  # 1on1 first as default
+        default_analysis_idx = 0  # manager_1on1
+    else:  # interview
+        analysis_options = ["comprehensive", "quick"]
+        default_analysis_idx = 0  # comprehensive
     
     analysis_type = st.selectbox(
         "Analysis Type",
-        ["comprehensive", "manager_1on1", "quick"],
+        analysis_options,
+        index=default_analysis_idx,
         help="Depth and focus of analysis"
     )
     
@@ -172,20 +198,31 @@ with st.sidebar:
     
     st.markdown("---")
     st.markdown("### About")
-    st.markdown("""
-    Upload your meeting recording to get:
-    - Actionable feedback
-    - Communication insights
-    - Areas for improvement
-    
-    Then ask follow-up questions!
-    """)
+    if scenario == "meeting":
+        st.markdown("""
+        Upload your meeting recording to get:
+        - Actionable feedback
+        - Communication insights
+        - Areas for improvement
+        
+        Then ask follow-up questions!
+        """)
+    else:
+        st.markdown("""
+        Upload your interview recording to get:
+        - Performance feedback
+        - Answer quality analysis
+        - Interview technique insights
+        
+        Then ask follow-up questions!
+        """)
 
 # Main content area
 tab1, tab2 = st.tabs(["📁 Upload & Analyze", "💬 Chat"])
 
 with tab1:
-    st.header("Upload Meeting Recording")
+    recording_label = "Interview" if scenario == "interview" else "Meeting"
+    st.header(f"Upload {recording_label} Recording")
     
     uploaded_file = st.file_uploader(
         "Choose an audio file",
@@ -212,7 +249,7 @@ with tab1:
                     
                     # Run analysis with original filename
                     session_id, analysis = asyncio.run(
-                        analyze_meeting(tmp_path, user_role, analysis_type, uploaded_file.name)
+                        analyze_meeting(tmp_path, user_role, analysis_type, uploaded_file.name, scenario)
                     )
                     
                     # Find the newly created file

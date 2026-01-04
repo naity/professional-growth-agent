@@ -45,41 +45,33 @@ MEETING_TRANSCRIBE_S3_BUCKET=meeting-coach-transcriptions
 ### 1. Single Analysis (CLI)
 
 ```bash
-# Basic - analyzes from your perspective
-uv run python agent.py meeting.mp3
+# Meeting analysis
+uv run python agent.py meeting.mp3 --scenario meeting --role report
 
-# Specify your role and analysis type
-uv run python agent.py meeting.mp3 --role report --type manager_1on1
+# Interview analysis (as candidate)
+uv run python agent.py interview.mp3 --scenario interview --role candidate
+
+# Interview analysis (as interviewer)
+uv run python agent.py interview.mp3 --scenario interview --role interviewer
 
 # Custom output file
 uv run python agent.py meeting.mp3 --output analysis.md
 ```
 
-### 2. Interactive Chat (CLI)
+### 2. Web UI with Multi-Turn Chat (Streamlit)
 
-Multi-turn conversation - ask follow-up questions about your meeting:
-
-```bash
-# Start interactive session
-uv run python chat_agent.py meeting.mp3 --role report
-
-# After analysis, ask questions like:
-# - "What specific questions should I have asked?"
-# - "Give me a script for my next 1:1"
-# - "How can I improve my active listening?"
-```
-
-### 3. Web UI (Streamlit)
-
-Visual interface with chat:
+Visual interface with chat and session management:
 
 ```bash
 uv run streamlit run streamlit_app.py
 
 # Then open browser to http://localhost:8501
+# - Choose scenario (meeting or interview)
+# - Select your role
 # - Upload audio file
-# - Get analysis
-# - Ask follow-up questions in chat interface
+# - Get analysis with download button
+# - Ask follow-up questions in chat
+# - Load previous sessions from sidebar
 ```
 
 ## What It Analyzes
@@ -115,8 +107,7 @@ Typical 30-minute meeting: ~$1.50
 │   ├── SKILL.md                     # Skill definition
 │   └── transcribe_audio.py          # AWS Transcribe integration
 ├── agent.py                         # Single analysis (CLI)
-├── chat_agent.py                    # Interactive multi-turn chat (CLI)
-├── streamlit_app.py                 # Web UI with chat interface
+├── streamlit_app.py                 # Web UI with multi-turn chat
 ├── prompts.py                       # Shared prompt configuration
 ├── pyproject.toml                   # Dependencies (uv)
 ├── env.template                     # Environment template
