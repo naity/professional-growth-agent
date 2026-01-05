@@ -166,9 +166,17 @@ def get_initial_prompt(audio_path, user_role, analysis_type, output_file=None, m
         analysis_instruction = "\n\nIMPORTANT: Write the analysis AND all your conversational responses in the SAME LANGUAGE as the conversation. If the transcript is in Chinese, write everything in Chinese. If it's in English, write everything in English."
     
     if mode == "analysis":
-        # Ensure output goes to results/ folder
-        if output_file and not output_file.startswith("results/"):
-            output_file = f"results/{output_file}"
+        # Ensure output goes to results/ folder with absolute path
+        # This prevents issues when cwd changes (e.g., during Skill tool execution)
+        from pathlib import Path
+        import os
+        if output_file:
+            if not output_file.startswith("results/"):
+                output_file = f"results/{output_file}"
+            # Convert to absolute path to ensure it's written to project root
+            if not Path(output_file).is_absolute():
+                # Use the project cwd that was set in options
+                output_file = str(Path(os.getcwd()) / output_file)
         
         prompt = f"""
 I have a {conversation_type} recording at: {audio_path}

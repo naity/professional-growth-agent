@@ -60,8 +60,9 @@ async def analyze_meeting(audio_path: str, user_role: str, analysis_type: str, o
     
     # Run query and capture session ID
     session_id = None
-    all_messages = []
+    result_message = None
     error_occurred = False
+    error_messages = []
     
     try:
         async for message in query(prompt=prompt, options=options):
@@ -73,30 +74,24 @@ async def analyze_meeting(audio_path: str, user_role: str, analysis_type: str, o
             if hasattr(message, 'subtype') and message.subtype == 'error':
                 error_occurred = True
                 error_msg = message.data.get('message', 'Unknown error occurred')
-                all_messages.append(f"❌ Error: {error_msg}")
+                error_messages.append(f"❌ Error: {error_msg}")
             
-            # Collect all assistant text messages
-            if isinstance(message, AssistantMessage):
-                for block in message.content:
-                    if isinstance(block, TextBlock):
-                        text = block.text.strip()
-                        if text:  # Only add non-empty messages
-                            all_messages.append(text)
+            # Capture ONLY the ResultMessage (final summary after task completion)
+            if isinstance(message, ResultMessage):
+                # ResultMessage has 'result' field, not 'content'
+                if hasattr(message, 'result') and message.result:
+                    result_message = message.result
     except Exception as e:
         error_occurred = True
-        all_messages.append(f"❌ Exception during analysis: {str(e)}")
+        error_messages.append(f"❌ Exception during analysis: {str(e)}")
     
-    # Return the LAST message (should be Claude's final summary)
-    # Skip short narration messages and get the last substantial one
-    result_text = ""
-    for msg in reversed(all_messages):
-        if len(msg) > 50:  # Substantial message
-            result_text = msg
-            break
-    
-    # Fallback: use last message or default
-    if not result_text:
-        result_text = all_messages[-1] if all_messages else "Analysis completed and saved to file."
+    # Build result text
+    if error_occurred:
+        result_text = "\n".join(error_messages)
+    elif result_message:
+        result_text = result_message
+    else:
+        result_text = "Analysis completed and saved to file."
     
     # Verify output file was created and has content
     output_path = Path(options.cwd) / "results" / output_file
