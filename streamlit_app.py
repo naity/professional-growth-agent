@@ -6,10 +6,9 @@ Upload meetings/interviews, get analysis, and ask follow-up questions.
 
 import streamlit as st
 import asyncio
-import os
 from pathlib import Path
 from dotenv import load_dotenv
-from claude_agent_sdk import query, AssistantMessage, TextBlock
+from claude_agent_sdk import query, AssistantMessage, TextBlock, ResultMessage
 from prompts import get_agent_options, get_initial_prompt
 from session_manager import SessionManager
 import tempfile
@@ -42,8 +41,12 @@ if 'output_file' not in st.session_state:
     st.session_state.output_file = None
 
 
-async def analyze_meeting(audio_path: str, user_role: str, analysis_type: str, original_filename: str, scenario: str = "meeting"):
+async def analyze_meeting(audio_path: str, user_role: str, analysis_type: str, original_filename: str, scenario: str = "meeting", analysis_language: str = "auto", transcription_language: str = "en-US"):
     """Analyze meeting/interview and capture session ID for follow-up questions."""
+    
+    # Validate audio file exists
+    if not Path(audio_path).exists():
+        raise FileNotFoundError(f"Audio file not found: {audio_path}")
     
     # Get consistent agent configuration
     options = get_agent_options(mode="analysis")
@@ -53,30 +56,59 @@ async def analyze_meeting(audio_path: str, user_role: str, analysis_type: str, o
     # Use original filename, not temp path
     # Note: prompts.py automatically adds "results/" prefix
     output_file = f"analysis_{Path(original_filename).stem}.md"
-    prompt = get_initial_prompt(audio_path, user_role, analysis_type, output_file, mode="analysis", scenario=scenario)
+    prompt = get_initial_prompt(audio_path, user_role, analysis_type, output_file, mode="analysis", scenario=scenario, analysis_language=analysis_language, transcription_language=transcription_language)
     
     # Run query and capture session ID
     session_id = None
-    response_text = []
-    file_written = False
+    all_messages = []
+    error_occurred = False
     
-    async for message in query(prompt=prompt, options=options):
-        # Capture session ID from init message
-        if hasattr(message, 'subtype') and message.subtype == 'init':
-            session_id = message.data.get('session_id')
-        
-        # Check for file writes
-        if hasattr(message, 'type') and message.type == 'tool_use':
-            if hasattr(message, 'name') and message.name == 'Write':
-                file_written = True
-        
-        # Collect assistant responses
-        if isinstance(message, AssistantMessage):
-            for block in message.content:
-                if isinstance(block, TextBlock):
-                    response_text.append(block.text)
+    try:
+        async for message in query(prompt=prompt, options=options):
+            # Capture session ID from init message
+            if hasattr(message, 'subtype') and message.subtype == 'init':
+                session_id = message.data.get('session_id')
+            
+            # Check for errors
+            if hasattr(message, 'subtype') and message.subtype == 'error':
+                error_occurred = True
+                error_msg = message.data.get('message', 'Unknown error occurred')
+                all_messages.append(f"❌ Error: {error_msg}")
+            
+            # Collect all assistant text messages
+            if isinstance(message, AssistantMessage):
+                for block in message.content:
+                    if isinstance(block, TextBlock):
+                        text = block.text.strip()
+                        if text:  # Only add non-empty messages
+                            all_messages.append(text)
+    except Exception as e:
+        error_occurred = True
+        all_messages.append(f"❌ Exception during analysis: {str(e)}")
     
-    result_text = "\n".join(response_text) if response_text else "Analysis completed and saved to file."
+    # Return the LAST message (should be Claude's final summary)
+    # Skip short narration messages and get the last substantial one
+    result_text = ""
+    for msg in reversed(all_messages):
+        if len(msg) > 50:  # Substantial message
+            result_text = msg
+            break
+    
+    # Fallback: use last message or default
+    if not result_text:
+        result_text = all_messages[-1] if all_messages else "Analysis completed and saved to file."
+    
+    # Verify output file was created and has content
+    output_path = Path(options.cwd) / "results" / output_file
+    if output_path.exists():
+        file_size = output_path.stat().st_size
+        if file_size == 0:
+            result_text += "\n\n⚠️ Warning: Output file was created but is empty. The analysis may have failed."
+        else:
+            result_text += f"\n\n✅ Analysis saved to {output_file}"
+    else:
+        result_text += f"\n\n⚠️ Warning: Expected output file not found: {output_file}"
+    
     return session_id, result_text
 
 
@@ -88,6 +120,7 @@ async def ask_followup(session_id: str, question: str):
         options.cwd = str(Path(__file__).parent.absolute())
         options.resume = session_id  # Resume the session
         
+        # For chat mode, we want the conversational AssistantMessage responses
         response_text = []
         async for message in query(prompt=question, options=options):
             if isinstance(message, AssistantMessage):
@@ -119,9 +152,9 @@ with st.sidebar:
     
     # Role options change based on scenario
     if scenario == "meeting":
-        role_options = ["report", "participant", "manager"]  # report first as default
+        role_options = ["mentee", "peer", "mentor"]  # mentee first as default
         role_help = "Your role in the meeting"
-        default_role_idx = 0  # report
+        default_role_idx = 0  # mentee
     else:  # interview
         role_options = ["candidate", "interviewer"]
         role_help = "Your role in the interview"
@@ -136,8 +169,8 @@ with st.sidebar:
     
     # Analysis types
     if scenario == "meeting":
-        analysis_options = ["manager_1on1", "comprehensive", "quick"]  # 1on1 first as default
-        default_analysis_idx = 0  # manager_1on1
+        analysis_options = ["comprehensive", "manager_1on1", "quick"]  # comprehensive first as default
+        default_analysis_idx = 0  # comprehensive
     else:  # interview
         analysis_options = ["comprehensive", "quick"]
         default_analysis_idx = 0  # comprehensive
@@ -147,6 +180,33 @@ with st.sidebar:
         analysis_options,
         index=default_analysis_idx,
         help="Depth and focus of analysis"
+    )
+    
+    # Transcription language selection
+    transcription_language_options = {
+        "English (US)": "en-US",
+        "Chinese (Mandarin - Simplified)": "zh-CN",
+        "Chinese (Traditional - Taiwan)": "zh-TW",
+        "Spanish": "es-ES",
+        "French": "fr-FR",
+        "German": "de-DE",
+        "Japanese": "ja-JP",
+        "Korean": "ko-KR"
+    }
+    
+    transcription_language_display = st.selectbox(
+        "Transcription Language",
+        list(transcription_language_options.keys()),
+        index=0,
+        help="Language of the audio recording (speaker labels will be enabled)"
+    )
+    transcription_language = transcription_language_options[transcription_language_display]
+    
+    analysis_language = st.selectbox(
+        "Analysis Language",
+        ["Same as audio", "English"],
+        index=0,
+        help="Choose analysis language: 'Same as audio' = Chinese for Chinese meetings, English for English meetings. 'English' = Always English."
     )
     
     st.markdown("---")
@@ -247,9 +307,12 @@ with tab1:
                     results_dir.mkdir(exist_ok=True)
                     existing_files = set(results_dir.glob("*.md"))
                     
+                    # Convert UI language selection to parameter
+                    analysis_lang_param = "auto" if analysis_language == "Same as audio" else "english"
+                    
                     # Run analysis with original filename
                     session_id, analysis = asyncio.run(
-                        analyze_meeting(tmp_path, user_role, analysis_type, uploaded_file.name, scenario)
+                        analyze_meeting(tmp_path, user_role, analysis_type, uploaded_file.name, scenario, analysis_lang_param, transcription_language)
                     )
                     
                     # Find the newly created file

@@ -57,22 +57,32 @@ def upload_to_s3(file_path, s3_client):
         raise
 
 
-def start_transcription_job(s3_key, audio_format, transcribe_client):
-    """Start an AWS Transcribe job."""
+def start_transcription_job(s3_key, audio_format, transcribe_client, language_code='en-US'):
+    """Start an AWS Transcribe job with speaker labels.
+    
+    Args:
+        s3_key: S3 object key for the audio file
+        audio_format: Audio format (mp3, wav, etc.)
+        transcribe_client: Boto3 Transcribe client
+        language_code: Language code (en-US, zh-CN, zh-TW, es-ES, fr-FR, de-DE, ja-JP, ko-KR)
+    
+    Always uses speaker labels to identify different speakers in the conversation.
+    """
     job_name = f"meeting-transcription-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
     job_uri = f"s3://{S3_BUCKET}/{s3_key}"
     
     try:
         print(f"Starting transcription job: {job_name}...")
+        print(f"Using language: {language_code} (speaker labels enabled)...")
         
         transcribe_client.start_transcription_job(
             TranscriptionJobName=job_name,
             Media={'MediaFileUri': job_uri},
             MediaFormat=audio_format,
-            LanguageCode='en-US',  # You can make this configurable
+            LanguageCode=language_code,
             Settings={
                 'ShowSpeakerLabels': True,
-                'MaxSpeakerLabels': 10  # Adjust based on meeting size
+                'MaxSpeakerLabels': 10
             }
         )
         
@@ -122,7 +132,7 @@ def get_transcript_text(transcript_uri):
         # Extract the transcript text
         transcript_text = transcript_data['results']['transcripts'][0]['transcript']
         
-        # Optionally extract speaker labels if available
+        # Extract speaker labels if available (will be empty with auto language detection)
         items = transcript_data['results'].get('items', [])
         speaker_segments = []
         current_speaker = None
@@ -168,11 +178,17 @@ def cleanup(s3_key, job_name, s3_client, transcribe_client):
 
 
 def main():
-    if len(sys.argv) < 2:
-        print("Usage: python transcribe_audio.py <audio_file_path>", file=sys.stderr)
-        sys.exit(1)
+    import argparse
     
-    audio_file_path = sys.argv[1]
+    parser = argparse.ArgumentParser(description='Transcribe audio files using AWS Transcribe')
+    parser.add_argument('audio_file', help='Path to the audio file')
+    parser.add_argument('--language', 
+                       default='en-US',
+                       help='Language code (en-US, zh-CN, zh-TW, es-ES, fr-FR, de-DE, ja-JP, ko-KR)')
+    
+    args = parser.parse_args()
+    audio_file_path = args.audio_file
+    language_code = args.language
     
     # Validate file exists
     if not os.path.exists(audio_file_path):
@@ -197,7 +213,7 @@ def main():
         s3_key = upload_to_s3(audio_file_path, s3_client)
         
         # Step 2: Start transcription
-        job_name = start_transcription_job(s3_key, audio_format, transcribe_client)
+        job_name = start_transcription_job(s3_key, audio_format, transcribe_client, language_code)
         
         # Step 3: Wait for completion
         transcript_uri = wait_for_transcription(job_name, transcribe_client)

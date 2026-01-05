@@ -18,10 +18,38 @@ Use this skill when the user:
 ## How It Works
 
 1. User provides path to an audio file
-2. This skill calls the `transcribe_audio.py` script
+2. This skill calls the `transcribe_audio.py` script with optional language parameter
 3. The script uploads audio to S3 and uses AWS Transcribe
-4. Returns the full transcript as plain text
+4. Returns the full transcript as plain text with speaker labels (if applicable)
 5. You (the agent) can then analyze the transcript
+
+## Usage
+
+**IMPORTANT: Always specify the language to get speaker labels (spk_0, spk_1).**
+
+```bash
+# English meeting (default)
+python transcribe_audio.py /path/to/audio.mp3
+
+# Chinese meeting
+python transcribe_audio.py /path/to/audio.mp3 --language zh-CN
+
+# Other languages
+python transcribe_audio.py /path/to/audio.mp3 --language es-ES
+```
+
+**Supported Languages:**
+- `en-US`: English (US) - **default**
+- `zh-CN`: Mandarin Chinese (Simplified)
+- `zh-TW`: Traditional Chinese (Taiwan)
+- `es-ES`: Spanish (Spain)
+- `fr-FR`: French
+- `de-DE`: German
+- `ja-JP`: Japanese
+- `ko-KR`: Korean
+
+**Speaker Labels:**
+All transcriptions include speaker labels (spk_0, spk_1, spk_2, etc.) to identify different speakers in the conversation. You must know the language beforehand.
 
 ## Supported Audio Formats
 

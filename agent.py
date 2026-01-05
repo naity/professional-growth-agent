@@ -24,20 +24,22 @@ load_dotenv()
 def build_analysis_prompt(
     audio_path: str, 
     analysis_type: str = "comprehensive",
-    user_role: str = "participant",
+    user_role: str = "peer",
     output_file: str = "analysis.md",
-    scenario: str = "meeting"
+    scenario: str = "meeting",
+    analysis_language: str = "auto"
 ) -> str:
     """Wrapper for shared prompt builder - kept for backward compatibility."""
-    return get_initial_prompt(audio_path, user_role, analysis_type, output_file, mode="analysis", scenario=scenario)
+    return get_initial_prompt(audio_path, user_role, analysis_type, output_file, mode="analysis", scenario=scenario, analysis_language=analysis_language)
 
 
 async def run_meeting_analysis(
     audio_path: str,
     analysis_type: str = "manager_1on1",
-    user_role: str = "report",
+    user_role: str = "mentee",
     output_file: str = None,
     scenario: str = "meeting",
+    analysis_language: str = "auto",
     verbose: bool = True
 ):
     """
@@ -77,7 +79,7 @@ async def run_meeting_analysis(
     options.cwd = str(Path(__file__).parent.absolute())
     
     # Generate the analysis prompt
-    prompt = build_analysis_prompt(audio_path, analysis_type, user_role, output_file, scenario)
+    prompt = build_analysis_prompt(audio_path, analysis_type, user_role, output_file, scenario, analysis_language)
     
     if verbose:
         print("\n🤖 Agent is working...\n")
@@ -135,14 +137,17 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Comprehensive analysis (you as generic participant)
+  # Comprehensive analysis (you seeking guidance - default)
   python agent.py recording.mp3
   
-  # Specify your role as report (works for both direct and skip-level)
-  python agent.py recording.mp3 --role report
+  # Specify your role as mentee (seeking guidance)
+  python agent.py recording.mp3 --role mentee
   
   # 1:1 meeting analysis
-  python agent.py recording.mp3 --type manager_1on1 --role report
+  python agent.py recording.mp3 --type manager_1on1 --role mentee
+  
+  # Analyze Chinese meeting in English
+  python agent.py chinese_meeting.m4a --analysis-language english
   
   # Custom output file
   python agent.py recording.mp3 --output my_analysis.md
@@ -164,13 +169,6 @@ Environment Variables (loaded from .env):
     )
     
     parser.add_argument(
-        '-t', '--type',
-        choices=['comprehensive', 'quick', 'manager_1on1'],
-        default='comprehensive',
-        help='Type of analysis to perform (default: comprehensive)'
-    )
-    
-    parser.add_argument(
         '-s', '--scenario',
         choices=['meeting', 'interview'],
         default='meeting',
@@ -179,20 +177,27 @@ Environment Variables (loaded from .env):
     
     parser.add_argument(
         '-r', '--role',
-        default='report',
-        help='Your role: meeting (participant/report/manager), interview (candidate/interviewer)'
+        default='mentee',
+        help='Your role: meeting (mentee/peer/mentor), interview (candidate/interviewer)'
     )
     
     parser.add_argument(
         '-t', '--type',
         choices=['comprehensive', 'quick', 'manager_1on1'],
         default='manager_1on1',
-        help='Type of analysis to perform (default: manager_1on1 for meetings)'
+        help='Type of analysis to perform (default: manager_1on1)'
     )
     
     parser.add_argument(
         '-o', '--output',
         help='Output file path (default: <audio_name>_analysis.md)'
+    )
+    
+    parser.add_argument(
+        '-l', '--analysis-language',
+        choices=['auto', 'english'],
+        default='auto',
+        help='Analysis language: auto (same as audio) or english (default: auto)'
     )
     
     parser.add_argument(
@@ -210,6 +215,7 @@ Environment Variables (loaded from .env):
         user_role=args.role,
         output_file=args.output,
         scenario=args.scenario,
+        analysis_language=args.analysis_language,
         verbose=not args.quiet
     ))
 

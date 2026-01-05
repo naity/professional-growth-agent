@@ -21,6 +21,7 @@ def get_agent_options(mode="analysis"):
     base_config = {
         "allowed_tools": ["Skill", "Read", "Write", "Bash"],
         "permission_mode": "acceptEdits",
+        "setting_sources": ["project"],  # Load skills from .claude/skills/
         # Custom system prompt with Professional Growth Coach instructions
         "system_prompt": _get_system_prompt(mode)
     }
@@ -42,6 +43,16 @@ Help users improve their communication and get more value from conversations (me
 - Providing specific, actionable feedback
 - Being conversational and supportive
 - Adapting feedback to the context (meetings, interviews, etc.)
+
+## Transcription Guidelines
+
+IMPORTANT: Always specify the language when transcribing to enable speaker labels:
+- English meetings: `--language en-US` (default if not specified)
+- Chinese meetings: `--language zh-CN`
+- Spanish meetings: `--language es-ES`
+- Other languages: `--language <code>` (fr-FR, de-DE, ja-JP, ko-KR, zh-TW)
+
+Speaker labels (spk_0, spk_1, spk_2) are ALWAYS enabled to identify different speakers.
 
 ## Analysis Principles
 
@@ -111,17 +122,18 @@ You are in a web chat interface. Be:
     return ""  # Default: no additional prompt
 
 
-def get_initial_prompt(audio_path, user_role, analysis_type, output_file=None, mode="analysis", scenario="meeting"):
+def get_initial_prompt(audio_path, user_role, analysis_type, output_file=None, mode="analysis", scenario="meeting", analysis_language="auto", transcription_language="en-US"):
     """
     Generate the initial analysis prompt.
     
     Args:
         audio_path: Path to audio file
-        user_role: User's role (participant/report/manager for meetings, candidate/interviewer for interviews)
+        user_role: User's role (mentee/peer/mentor for meetings, candidate/interviewer for interviews)
         analysis_type: Type of analysis (comprehensive, quick, manager_1on1)
         output_file: Output file path (for analysis mode)
         mode: Interaction mode
         scenario: Context type (meeting or interview)
+        analysis_language: Language for analysis output ("auto" = same as audio, "english" = force English)
     
     Returns:
         Formatted prompt string
@@ -130,10 +142,10 @@ def get_initial_prompt(audio_path, user_role, analysis_type, output_file=None, m
     # Build perspective based on scenario and role
     perspective = ""
     if scenario == "meeting":
-        if user_role == "report":
-            perspective = "I am the more junior person in this meeting (direct report or skip-level). "
-        elif user_role == "manager":
-            perspective = "I am the more senior person in this meeting. "
+        if user_role == "mentee":
+            perspective = "I am seeking guidance in this conversation (mentee, report, or junior person). "
+        elif user_role == "mentor":
+            perspective = "I am providing guidance in this conversation (mentor, manager, or senior person). "
     elif scenario == "interview":
         if user_role == "candidate":
             perspective = "I am the candidate being interviewed. "
@@ -143,6 +155,16 @@ def get_initial_prompt(audio_path, user_role, analysis_type, output_file=None, m
     # Build base prompt
     conversation_type = "interview" if scenario == "interview" else "meeting"
     
+    # Add transcription language instruction
+    transcription_instruction = f"\n\nIMPORTANT: Use --language {transcription_language} when transcribing to enable speaker labels."
+    
+    # Add analysis language instruction based on preference
+    analysis_instruction = ""
+    if analysis_language == "english":
+        analysis_instruction = "\n\nIMPORTANT: Write the analysis AND all your conversational responses in English, even if the conversation is in another language."
+    elif analysis_language == "auto":
+        analysis_instruction = "\n\nIMPORTANT: Write the analysis AND all your conversational responses in the SAME LANGUAGE as the conversation. If the transcript is in Chinese, write everything in Chinese. If it's in English, write everything in English."
+    
     if mode == "analysis":
         # Ensure output goes to results/ folder
         if output_file and not output_file.startswith("results/"):
@@ -151,19 +173,19 @@ def get_initial_prompt(audio_path, user_role, analysis_type, output_file=None, m
         prompt = f"""
 I have a {conversation_type} recording at: {audio_path}
 
-{perspective}Transcribe this {conversation_type} and write your analysis directly to: {output_file}
+{perspective}Transcribe this {conversation_type} and write your analysis directly to: {output_file}{transcription_instruction}
 
 Analysis type: {analysis_type}
-Focus on actionable feedback to help ME improve my {"interview performance" if scenario == "interview" else "communication"}.
+Focus on actionable feedback to help ME improve my {"interview performance" if scenario == "interview" else "communication"}.{analysis_instruction}
 """
     else:  # chat or stream
         prompt = f"""
 I have a {conversation_type} recording at: {audio_path}
 
-{perspective}Transcribe this {conversation_type} and provide {analysis_type} analysis.
+{perspective}Transcribe this {conversation_type} and provide {analysis_type} analysis.{transcription_instruction}
 
 Focus on actionable feedback to help ME improve.
-After the initial analysis, I may ask follow-up questions.
+After the initial analysis, I may ask follow-up questions.{analysis_instruction}
 """
     
     # Add analysis-type specific instructions
