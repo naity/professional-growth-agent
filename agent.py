@@ -27,10 +27,11 @@ def build_analysis_prompt(
     user_role: str = "peer",
     output_file: str = "analysis.md",
     scenario: str = "meeting",
-    analysis_language: str = "auto"
+    analysis_language: str = "auto",
+    transcription_language: str = "en-US"
 ) -> str:
     """Wrapper for shared prompt builder - kept for backward compatibility."""
-    return get_initial_prompt(audio_path, user_role, analysis_type, output_file, mode="analysis", scenario=scenario, analysis_language=analysis_language)
+    return get_initial_prompt(audio_path, user_role, analysis_type, output_file, mode="analysis", scenario=scenario, analysis_language=analysis_language, transcription_language=transcription_language)
 
 
 async def run_meeting_analysis(
@@ -40,6 +41,7 @@ async def run_meeting_analysis(
     output_file: str = None,
     scenario: str = "meeting",
     analysis_language: str = "auto",
+    transcription_language: str = "en-US",
     verbose: bool = True
 ):
     """
@@ -51,6 +53,8 @@ async def run_meeting_analysis(
         user_role: User's role in the conversation
         output_file: Path to save the analysis (default: auto-generated markdown file)
         scenario: Type of conversation (meeting or interview)
+        analysis_language: Language for analysis output (auto or english)
+        transcription_language: Language code for transcription (e.g., en-US, zh-CN)
         verbose: Whether to print progress messages
     """
     
@@ -79,7 +83,7 @@ async def run_meeting_analysis(
     options.cwd = str(Path(__file__).parent.absolute())
     
     # Generate the analysis prompt
-    prompt = build_analysis_prompt(audio_path, analysis_type, user_role, output_file, scenario, analysis_language)
+    prompt = build_analysis_prompt(audio_path, analysis_type, user_role, output_file, scenario, analysis_language, transcription_language)
     
     if verbose:
         print("\n🤖 Agent is working...\n")
@@ -146,8 +150,11 @@ Examples:
   # 1:1 meeting analysis
   python agent.py recording.mp3 --type manager_1on1 --role mentee
   
-  # Analyze Chinese meeting in English
-  python agent.py chinese_meeting.m4a --analysis-language english
+  # Chinese meeting with Chinese analysis
+  python agent.py chinese_meeting.m4a --transcription-language zh-CN
+  
+  # Chinese meeting analyzed in English
+  python agent.py chinese_meeting.m4a --transcription-language zh-CN --analysis-language english
   
   # Custom output file
   python agent.py recording.mp3 --output my_analysis.md
@@ -201,6 +208,13 @@ Environment Variables (loaded from .env):
     )
     
     parser.add_argument(
+        '--transcription-language',
+        choices=['en-US', 'zh-CN', 'zh-TW', 'es-ES', 'fr-FR', 'de-DE', 'ja-JP', 'ko-KR'],
+        default='en-US',
+        help='Transcription language code (default: en-US). Speaker labels always enabled.'
+    )
+    
+    parser.add_argument(
         '-q', '--quiet',
         action='store_true',
         help='Reduce output verbosity'
@@ -216,6 +230,7 @@ Environment Variables (loaded from .env):
         output_file=args.output,
         scenario=args.scenario,
         analysis_language=args.analysis_language,
+        transcription_language=args.transcription_language,
         verbose=not args.quiet
     ))
 

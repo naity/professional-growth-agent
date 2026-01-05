@@ -48,17 +48,11 @@ MEETING_TRANSCRIBE_S3_BUCKET=professional-growth-transcriptions
 # Meeting analysis (you as mentee seeking guidance)
 uv run python agent.py meeting.mp3 --scenario meeting --role mentee
 
-# Career coaching or mentorship conversation
-uv run python agent.py coaching.m4a --role mentee
-
 # Interview analysis (as candidate)
 uv run python agent.py interview.mp3 --scenario interview --role candidate
 
-# Interview analysis (as interviewer)
-uv run python agent.py interview.mp3 --scenario interview --role interviewer
-
-# Chinese meeting analyzed in English
-uv run python agent.py chinese_meeting.m4a --analysis-language english
+# Non-English meeting (see Multi-Language Support section for all languages)
+uv run python agent.py chinese_meeting.m4a --transcription-language zh-CN
 
 # Custom output file
 uv run python agent.py meeting.mp3 --output analysis.md
@@ -94,42 +88,47 @@ Output saved as markdown file (e.g., `meeting_analysis.md`).
 
 ## Multi-Language Support
 
-**Supports multiple languages** with speaker identification (English, Chinese, Spanish, French, German, Japanese, Korean).
+**Supported languages** with speaker identification:
+- English (en-US)
+- Chinese Mandarin - Simplified (zh-CN)
+- Chinese Traditional - Taiwan (zh-TW)
+- Spanish (es-ES)
+- French (fr-FR)
+- German (de-DE)
+- Japanese (ja-JP)
+- Korean (ko-KR)
 
 **How it works:**
-- You specify the meeting language (or default to English)
-- System transcribes with **speaker labels** (spk_0, spk_1) to identify who said what
-- Analysis is provided in your chosen language
+- Specify transcription language with `--transcription-language` (defaults to en-US)
+- Speaker labels are **always enabled** to identify who said what (spk_0, spk_1, etc.)
+- Choose analysis language: same as audio (default) or English
 
-**Analysis Language Options**:
-- **Same as audio** (default) - Analysis matches the recording language (Chinese → Chinese, English → English)
-- **English** - Always analyze in English, regardless of recording language (useful for sharing or portfolio)
+**Analysis Language Options:**
+- `--analysis-language auto` (default) - Analysis matches the recording language
+- `--analysis-language english` - Always analyze in English (useful for sharing/portfolio)
 
-**Usage:**
+**CLI Examples:**
 ```bash
 # English meeting (default)
-uv run python agent.py meeting.mp3 --role mentee
+uv run python agent.py meeting.mp3
 
-# Chinese meeting with speaker labels
-uv run python agent.py chinese-meeting.m4a --role mentee
-# In the conversation, say: "This is a Chinese meeting"
-# Claude will use: --language zh-CN
+# Chinese meeting, analysis in Chinese
+uv run python agent.py meeting.m4a --transcription-language zh-CN
 
-# Or explicitly in prompt
-uv run python agent.py "Transcribe this Spanish meeting" meeting.mp3
+# Chinese meeting, analysis in English
+uv run python agent.py meeting.m4a --transcription-language zh-CN --analysis-language english
+
+# Spanish meeting
+uv run python agent.py meeting.mp3 --transcription-language es-ES
+
+# French meeting
+uv run python agent.py meeting.mp3 --transcription-language fr-FR
 ```
 
-**Usage**:
-```bash
-# Chinese meeting, analysis in Chinese (default with auto-detection)
-uv run python agent.py chinese_meeting.m4a
-
-# Chinese meeting, analysis in English (for sharing/portfolio)
-uv run python agent.py chinese_meeting.m4a --analysis-language english
-
-# Explicitly use auto-detection (same as default)
-uv run python agent.py chinese_meeting.m4a --analysis-language auto
-```
+**Streamlit UI:**
+- Use the "Transcription Language" dropdown to select the audio language
+- Use the "Analysis Language" dropdown to choose output language
+- Speaker labels are automatically enabled
 
 ## How It Works
 
